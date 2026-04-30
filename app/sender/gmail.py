@@ -7,13 +7,10 @@ import httpx
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr, formatdate, make_msgid
-from pathlib import Path
 from app.shared.config import get_settings
+from app.shared.db import db
 
 log = logging.getLogger(__name__)
-
-TOKENS_DIR = Path("gmail_tokens")
-TOKENS_DIR.mkdir(exist_ok=True)
 
 SCOPES = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly"
 
@@ -22,12 +19,10 @@ ACCOUNTS = {
     "benny": {
         "display_name": "Benny Torso",
         "email": "benny@optaimum.com",
-        "token_file": "benny.json",
     },
     "george": {
         "display_name": "George",
         "email": "george@optaimum.com",
-        "token_file": "george.json",
     },
 }
 
@@ -38,11 +33,29 @@ MAX_PER_HOUR = 15
 MAX_PER_DAY = 40
 
 
-def _token_path(account: str) -> Path:
-    acct = ACCOUNTS.get(account)
-    if not acct:
-        raise ValueError(f"Unknown account: {account}. Available: {list(ACCOUNTS.keys())}")
-    return TOKENS_DIR / acct["token_file"]
+# ─── TOKEN STORAGE (database-backed, survives deploys) ─────────────
+
+async def _load_tokens(account: str) -> dict | None:
+    """Load tokens from database."""
+    async with db() as conn:
+        row = await conn.fetchrow(
+            "SELECT tokens_json FROM gmail_tokens WHERE account = $1", account
+        )
+        if row:
+            return json.loads(row["tokens_json"]) if isinstance(row["tokens_json"], str) else dict(row["tokens_json"])
+    return None
+
+
+async def _save_tokens(account: str, tokens: dict):
+    """Save tokens to database (upsert)."""
+    verified_email = tokens.get("verified_email", "")
+    async with db() as conn:
+        await conn.execute("""
+            INSERT INTO gmail_tokens (account, tokens_json, verified_email, updated_at)
+            VALUES ($1, $2::jsonb, $3, NOW())
+            ON CONFLICT (account) DO UPDATE
+            SET tokens_json = $2::jsonb, verified_email = $3, updated_at = NOW()
+        """, account, json.dumps(tokens), verified_email)
 
 
 def get_auth_url(account: str = "benny") -> str:
@@ -66,7 +79,7 @@ def get_auth_url(account: str = "benny") -> str:
 
 
 async def exchange_code(code: str, account: str = "benny") -> dict:
-    """Exchange authorization code for tokens and store under the account name."""
+    """Exchange authorization code for tokens and store in the database."""
     s = get_settings()
     async with httpx.AsyncClient() as client:
         resp = await client.post("https://oauth2.googleapis.com/token", data={
@@ -79,12 +92,12 @@ async def exchange_code(code: str, account: str = "benny") -> dict:
         resp.raise_for_status()
         tokens = resp.json()
         tokens["account"] = account
-        _token_path(account).write_text(json.dumps(tokens))
 
         # Verify we got the right account
         email = await _get_profile_email(tokens["access_token"])
         tokens["verified_email"] = email
-        _token_path(account).write_text(json.dumps(tokens))
+
+        await _save_tokens(account, tokens)
         return tokens
 
 
@@ -102,10 +115,9 @@ async def _get_profile_email(access_token: str) -> str:
 
 async def refresh_access_token(account: str) -> str:
     """Refresh the access token for a specific account."""
-    path = _token_path(account)
-    if not path.exists():
+    tokens = await _load_tokens(account)
+    if not tokens:
         raise RuntimeError(f"Account '{account}' not authenticated. Visit /auth/google/{account}")
-    tokens = json.loads(path.read_text())
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
         raise RuntimeError(f"No refresh token for '{account}'. Re-authenticate at /auth/google/{account}")
@@ -121,29 +133,21 @@ async def refresh_access_token(account: str) -> str:
         resp.raise_for_status()
         new_tokens = resp.json()
         tokens["access_token"] = new_tokens["access_token"]
-        path.write_text(json.dumps(tokens))
+        await _save_tokens(account, tokens)
         return tokens["access_token"]
 
 
 async def get_access_token(account: str) -> str:
     """Get a valid access token for a specific account."""
-    path = _token_path(account)
-    if not path.exists():
+    tokens = await _load_tokens(account)
+    if not tokens:
         raise RuntimeError(f"Account '{account}' not authenticated. Visit /auth/google/{account}")
     return await refresh_access_token(account)
 
 
 async def send_email(to: str, subject: str, body: str,
                      account: str = "benny", reply_to_msg_id: str = "") -> dict:
-    """Send a plain-text email via Gmail API from a specific account.
-
-    Anti-spam measures:
-    - Proper From with display name
-    - Plain text only (no HTML = lower spam score)
-    - Proper Message-ID, Date, and Reply-To headers
-    - List-Unsubscribe header
-    - Threading via In-Reply-To / References for follow-ups
-    """
+    """Send a plain-text email via Gmail API from a specific account."""
     acct = ACCOUNTS[account]
     access_token = await get_access_token(account)
 
@@ -206,8 +210,8 @@ async def send_with_delay():
 async def is_authenticated(account: str = None) -> bool | dict:
     """Check auth status. If account is None, returns status for all accounts."""
     if account:
-        path = _token_path(account)
-        if not path.exists():
+        tokens = await _load_tokens(account)
+        if not tokens:
             return False
         try:
             await get_access_token(account)
@@ -218,8 +222,8 @@ async def is_authenticated(account: str = None) -> bool | dict:
     # Return status for all accounts
     status = {}
     for name in ACCOUNTS:
-        path = _token_path(name)
-        if not path.exists():
+        tokens = await _load_tokens(name)
+        if not tokens:
             status[name] = False
             continue
         try:
@@ -231,10 +235,7 @@ async def is_authenticated(account: str = None) -> bool | dict:
 
 
 async def check_thread_replies(thread_id: str, account: str = "benny") -> dict:
-    """Check if a Gmail thread has replies from the recipient.
-
-    Returns: {"has_reply": bool, "reply_count": int, "latest_snippet": str}
-    """
+    """Check if a Gmail thread has replies from the recipient."""
     if not thread_id:
         return {"has_reply": False, "reply_count": 0, "latest_snippet": ""}
 
@@ -253,7 +254,6 @@ async def check_thread_replies(thread_id: str, account: str = "benny") -> dict:
             messages = thread.get("messages", [])
             acct = ACCOUNTS[account]
 
-            # Count messages NOT from us (i.e. replies from recipient)
             replies = []
             for msg in messages:
                 headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
@@ -272,15 +272,11 @@ async def check_thread_replies(thread_id: str, account: str = "benny") -> dict:
 
 
 async def check_replies_for_leads(account: str = "benny") -> list[dict]:
-    """Scan recent sent emails for replies. Returns leads that replied.
-
-    Checks Gmail inbox for threads where we sent outreach and got a response.
-    """
+    """Scan recent sent emails for replies. Returns leads that replied."""
     try:
         access_token = await get_access_token(account)
         acct = ACCOUNTS[account]
         async with httpx.AsyncClient() as client:
-            # Search for replies to our outreach (messages in inbox that are replies)
             resp = await client.get(
                 "https://gmail.googleapis.com/gmail/v1/users/me/messages",
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -294,7 +290,7 @@ async def check_replies_for_leads(account: str = "benny") -> list[dict]:
 
             messages = resp.json().get("messages", [])
             replies = []
-            for msg_ref in messages[:20]:  # Cap at 20 to avoid rate limits
+            for msg_ref in messages[:20]:
                 msg_resp = await client.get(
                     f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_ref['id']}",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -304,7 +300,6 @@ async def check_replies_for_leads(account: str = "benny") -> list[dict]:
                     continue
                 msg = msg_resp.json()
                 headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
-                # Only count if it's a reply to something (has In-Reply-To header)
                 if headers.get("In-Reply-To"):
                     replies.append({
                         "from": headers.get("From", ""),
@@ -320,23 +315,12 @@ async def check_replies_for_leads(account: str = "benny") -> list[dict]:
 
 
 def list_accounts() -> list[dict]:
-    """List all registered accounts and their auth status."""
+    """List all registered accounts (auth status checked async separately)."""
     result = []
     for name, acct in ACCOUNTS.items():
-        path = _token_path(name)
-        authenticated = path.exists()
-        verified_email = ""
-        if authenticated:
-            try:
-                tokens = json.loads(path.read_text())
-                verified_email = tokens.get("verified_email", "")
-            except Exception:
-                pass
         result.append({
             "account": name,
             "display_name": acct["display_name"],
             "email": acct["email"],
-            "authenticated": authenticated,
-            "verified_email": verified_email,
         })
     return result

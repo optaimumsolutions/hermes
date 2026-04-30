@@ -22,6 +22,9 @@ async def lifespan(app: FastAPI):
         # Run deliverability migration (idempotent - uses IF NOT EXISTS)
         with open("sql/migrations/002_deliverability.sql") as f:
             await conn.execute(f.read())
+        # Run gmail tokens migration (idempotent - uses IF NOT EXISTS)
+        with open("sql/migrations/003_gmail_tokens.sql") as f:
+            await conn.execute(f.read())
     yield
     await close_pool()
 
