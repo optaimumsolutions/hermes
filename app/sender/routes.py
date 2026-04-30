@@ -529,6 +529,51 @@ async def check_deliverability(
     return result.to_dict()
 
 
+@router.post("/warmup/run")
+async def run_warmup(
+    week: int = Query(1, ge=1, le=8, description="Current warmup week (1-2 = heavy, 3-4 = medium, 5+ = maintenance)"),
+):
+    """Run a full inbox warmup session.
+
+    Sends inter-account conversations (benny<->george) and warm emails
+    to known contacts. Should run 2-3x/day during weeks 1-2.
+
+    Week 1-2: 4 inter-account + 5 warm contacts (~9 emails)
+    Week 3-4: 2 inter-account + 3 warm contacts (~5 emails)
+    Week 5+:  1 inter-account + 1 warm contact (~2 emails)
+    """
+    from .warmup import run_full_warmup
+    result = await run_full_warmup(week=week)
+    await send_telegram(
+        f"*Warmup Session Complete (Week {week})*\n"
+        f"Total sent: {result['total_sent']}\n"
+        f"Inter-account: {sum(1 for r in result['inter_account'] if r['sent'])}\n"
+        f"Warm contacts: {sum(1 for r in result['warm_benny'] if r['sent']) + sum(1 for r in result['warm_george'] if r['sent'])}"
+    )
+    return result
+
+
+@router.post("/warmup/inter-account")
+async def warmup_inter_account(
+    count: int = Query(3, ge=1, le=5, description="Number of inter-account emails"),
+):
+    """Send conversational emails between benny and george only."""
+    from .warmup import run_inter_account_warmup
+    return await run_inter_account_warmup(count=count)
+
+
+@router.post("/warmup/warm-contacts")
+async def warmup_warm_contacts(
+    account: str = Query("benny", description="Which account sends: benny or george"),
+    count: int = Query(2, ge=1, le=5, description="Number of warm emails to send"),
+):
+    """Send warm emails to known contacts from a specific account."""
+    from .warmup import run_warm_contact_emails
+    if not await is_authenticated(account):
+        raise HTTPException(400, f"Gmail account '{account}' not authenticated")
+    return await run_warm_contact_emails(account=account, count=count)
+
+
 @router.get("/deliverability/status")
 async def deliverability_status():
     """Get current deliverability health metrics."""
