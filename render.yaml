@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: outreach-system
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: LEAD_DATABASE_URL
+        sync: false
+      - key: HUNTER_API_KEY
+        sync: false
+      - key: INSTANTLY_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: "https://outreach-system.onrender.com/auth/google/callback"
+      - key: SCOUT_BATCH_SIZE
+        value: "25"
+      - key: SENDER_DAILY_LIMIT
+        value: "50"
+      - key: LEAD_SCORE_THRESHOLD
+        value: "6"
+      - key: NEVERBOUNCE_API_KEY
+        sync: false
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_CHANNEL_ID
+        sync: false
+      - key: SLACK_APP_TOKEN
+        sync: false

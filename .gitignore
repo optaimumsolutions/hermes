@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+client_secret.json
+gmail_token.json
+gmail_tokens/
+*.log
+server.log
+uvicorn.log
