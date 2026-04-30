@@ -4,6 +4,11 @@ from pydantic import BaseModel
 from app.shared.db import db, lead_db
 from app.shared.config import get_settings
 from app.shared.notify import send_telegram, notify, alert_hot_lead, campaign_report
+from app.shared.slack_reports import (
+    report_campaign_send, report_hot_lead, report_deliverability_warning,
+    report_reply_monitor, report_daily_digest, report_daily_deliverability,
+    report_weekly_summary,
+)
 from .personalize import personalize_with_llm
 from .instantly import add_leads_to_campaign, get_campaign_summary
 from .catchflow_sequences import build_sequence, build_sequence_sync, generate_batch_emails
@@ -150,11 +155,9 @@ async def log_reply(req: LogReplyRequest):
         """, lead["id"], f'{{"sentiment":"{req.sentiment}"}}')
 
     if req.sentiment == "positive":
-        await alert_hot_lead({
-            **dict(lead),
-            "email": req.lead_email,
-            "reply_text": req.reply_text,
-        })
+        lead_dict = {**dict(lead), "email": req.lead_email, "reply_text": req.reply_text}
+        await alert_hot_lead(lead_dict)
+        await report_hot_lead(lead_dict)
 
     return {"status": "logged", "lead_id": lead["id"], "sentiment": req.sentiment}
 
@@ -410,6 +413,8 @@ async def send_catchflow_batch(
     acct = ACCOUNTS.get(account, {})
     from_addr = f"{acct.get('display_name', account)} <{acct.get('email', '')}>"
     await campaign_report(step, sent_count, failed_count, account, from_addr)
+    blocked_count = len([r for r in results if r.get("blocked_reason")])
+    await report_campaign_send(step, sent_count, failed_count, blocked_count, account, from_addr, results)
 
     return {
         "step": step,
@@ -506,6 +511,8 @@ async def monitor_replies(
             f"*Reply Monitor found {matched} new replies*\n"
             f"Companies: {names}"
         )
+
+    await report_reply_monitor(len(replies), matched, new_replies)
 
     return {"checked": len(replies), "matched": matched, "new_replies": new_replies}
 

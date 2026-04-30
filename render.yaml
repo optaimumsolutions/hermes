@@ -24,7 +24,7 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: "https://outreach-system.onrender.com/auth/google/callback"
+        value: "https://outreach-system-o7bm.onrender.com/auth/google/callback"
       - key: SCOUT_BATCH_SIZE
         value: "25"
       - key: SENDER_DAILY_LIMIT

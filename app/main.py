@@ -161,6 +161,23 @@ async def pipeline_stats():
     }
 
 
+@app.post("/reports/daily")
+async def slack_daily_reports():
+    """Trigger daily reports to Slack (pipeline digest + deliverability)."""
+    from app.shared.slack_reports import report_daily_digest, report_daily_deliverability
+    digest = await report_daily_digest()
+    deliverability = await report_daily_deliverability()
+    return {"digest": digest, "deliverability": deliverability}
+
+
+@app.post("/reports/weekly")
+async def slack_weekly_report():
+    """Trigger weekly performance summary to Slack."""
+    from app.shared.slack_reports import report_weekly_summary
+    result = await report_weekly_summary()
+    return result
+
+
 @app.post("/pipeline/daily-report")
 async def trigger_daily_report():
     """Trigger a daily report to Telegram."""
