@@ -5,6 +5,7 @@ from app.shared.db import get_pool, close_pool
 from app.shared.notify import daily_report
 from app.scout.routes import router as scout_router
 from app.sender.routes import router as sender_router
+from app.traffic.routes import router as traffic_router
 from app.sender.gmail import get_auth_url, exchange_code, is_authenticated, list_accounts
 
 
@@ -25,6 +26,9 @@ async def lifespan(app: FastAPI):
         # Run gmail tokens migration (idempotent - uses IF NOT EXISTS)
         with open("sql/migrations/003_gmail_tokens.sql") as f:
             await conn.execute(f.read())
+        # Run traffic monitor migration (idempotent - uses IF NOT EXISTS)
+        with open("sql/migrations/004_traffic.sql") as f:
+            await conn.execute(f.read())
     yield
     await close_pool()
 
@@ -38,6 +42,7 @@ app = FastAPI(
 
 app.include_router(scout_router)
 app.include_router(sender_router)
+app.include_router(traffic_router)
 
 
 @app.get("/slack/channels")

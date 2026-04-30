@@ -12,7 +12,12 @@ from app.shared.db import db
 
 log = logging.getLogger(__name__)
 
-SCOPES = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly"
+SCOPES = (
+    "https://www.googleapis.com/auth/gmail.send "
+    "https://www.googleapis.com/auth/gmail.readonly "
+    "https://www.googleapis.com/auth/webmasters.readonly "
+    "https://www.googleapis.com/auth/analytics.readonly"
+)
 
 # ─── REGISTERED ACCOUNTS ───────────────────────────────────────────
 ACCOUNTS = {

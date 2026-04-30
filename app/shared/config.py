@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
     neverbounce_api_key: str = ""
+    # Traffic monitor
+    ga4_property_optaimum: str = ""
+    ga4_property_catchflow: str = ""
+    cloudflare_api_token: str = ""
+    cloudflare_zone_optaimum: str = ""
+    cloudflare_zone_catchflow: str = ""
     scout_batch_size: int = 25
     sender_daily_limit: int = 50
     lead_score_threshold: int = 6

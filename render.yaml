@@ -39,3 +39,13 @@ services:
         sync: false
       - key: SLACK_APP_TOKEN
         sync: false
+      - key: GA4_PROPERTY_OPTAIMUM
+        sync: false
+      - key: GA4_PROPERTY_CATCHFLOW
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_ZONE_OPTAIMUM
+        sync: false
+      - key: CLOUDFLARE_ZONE_CATCHFLOW
+        sync: false
