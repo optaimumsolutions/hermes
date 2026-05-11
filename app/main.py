@@ -7,6 +7,7 @@ from app.shared.notify import daily_report
 from app.scout.routes import router as scout_router
 from app.sender.routes import router as sender_router
 from app.traffic.routes import router as traffic_router
+from app.traffic.discovery import router as discovery_router
 from app.sender.gmail import get_auth_url, exchange_code, is_authenticated, list_accounts
 from app.scheduler import start_scheduler, stop_scheduler
 
@@ -62,6 +63,7 @@ app = FastAPI(
 app.include_router(scout_router)
 app.include_router(sender_router)
 app.include_router(traffic_router)
+app.include_router(discovery_router)
 
 
 @app.get("/slack/channels")
