@@ -18,6 +18,14 @@ GSC_API = "https://searchconsole.googleapis.com/webmasters/v3"
 # Use benny's OAuth tokens (same Google account owns both properties)
 OAUTH_ACCOUNT = os.environ.get("TRAFFIC_OAUTH_ACCOUNT", "benny")
 
+# Map domains to their actual GSC property identifiers
+# URL-prefix properties use "https://domain.com/" format
+# Domain properties use "sc-domain:domain.com" format
+GSC_PROPERTY_MAP = {
+    "optaimum.com": os.environ.get("GSC_PROPERTY_OPTAIMUM", "https://optaimum.com/"),
+    "catchflow.org": os.environ.get("GSC_PROPERTY_CATCHFLOW", "https://catchflow.org/"),
+}
+
 
 
 async def _get_token() -> str | None:
@@ -41,7 +49,9 @@ async def pull_daily(domain: str, query_date: date = None) -> dict | None:
     if query_date is None:
         query_date = date.today() - timedelta(days=2)  # GSC has 2-day lag
 
-    site_url = f"sc-domain:{domain}"
+    # Try URL-prefix format first (https://domain/), fall back to sc-domain:
+    # The actual format depends on how the property was registered in GSC
+    site_url = GSC_PROPERTY_MAP.get(domain, f"sc-domain:{domain}")
     date_str = query_date.isoformat()
 
     try:
