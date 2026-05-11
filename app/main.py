@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
 from fastapi.responses import RedirectResponse
@@ -7,6 +8,15 @@ from app.scout.routes import router as scout_router
 from app.sender.routes import router as sender_router
 from app.traffic.routes import router as traffic_router
 from app.sender.gmail import get_auth_url, exchange_code, is_authenticated, list_accounts
+from app.scheduler import start_scheduler, stop_scheduler
+
+# Configure logging so output reaches stdout (and Render's log collector)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -29,14 +39,23 @@ async def lifespan(app: FastAPI):
         # Run traffic monitor migration (idempotent - uses IF NOT EXISTS)
         with open("sql/migrations/004_traffic.sql") as f:
             await conn.execute(f.read())
+    log.info("Database migrations complete")
+
+    # Start the cron scheduler
+    start_scheduler()
+    log.info("Application startup complete")
+
     yield
+
+    stop_scheduler()
     await close_pool()
+    log.info("Application shutdown complete")
 
 
 app = FastAPI(
     title="Outreach System",
     description="Multi-agent outreach: Scout (lead discovery) + Sender (email execution)",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -93,10 +112,32 @@ async def slack_test():
 @app.get("/health")
 async def health():
     from app.shared.db import db
+    from app.scheduler import scheduler
     async with db() as conn:
         result = await conn.fetchval("SELECT 1")
     gmail_status = await is_authenticated()
-    return {"status": "ok", "db": result == 1, "gmail": gmail_status}
+    jobs = [{"id": j.id, "next_run": str(j.next_run_time)} for j in scheduler.get_jobs()]
+    return {
+        "status": "ok",
+        "db": result == 1,
+        "gmail": gmail_status,
+        "scheduler": {"running": scheduler.running, "jobs": len(jobs)},
+    }
+
+
+@app.get("/scheduler/jobs")
+async def scheduler_jobs():
+    """List all scheduled cron jobs and their next run times."""
+    from app.scheduler import scheduler
+    jobs = []
+    for j in scheduler.get_jobs():
+        jobs.append({
+            "id": j.id,
+            "name": j.name,
+            "trigger": str(j.trigger),
+            "next_run": str(j.next_run_time),
+        })
+    return {"running": scheduler.running, "jobs": jobs}
 
 
 @app.get("/auth/accounts")
