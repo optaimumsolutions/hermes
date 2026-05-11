@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote
 """Google Search Console data connector.
 
 Pulls daily metrics using the webmasters.readonly scope.
@@ -58,7 +59,7 @@ async def pull_daily(domain: str, query_date: date = None) -> dict | None:
         async with httpx.AsyncClient(timeout=30) as client:
             # Aggregate metrics
             resp = await client.post(
-                f"{GSC_API}/sites/{site_url}/searchAnalytics/query",
+                f"{GSC_API}/sites/{quote(site_url, safe='')}/searchAnalytics/query",
                 headers={"Authorization": f"Bearer {token}"},
                 json={
                     "startDate": date_str,
@@ -90,7 +91,7 @@ async def pull_daily(domain: str, query_date: date = None) -> dict | None:
 
             # Top queries
             resp_q = await client.post(
-                f"{GSC_API}/sites/{site_url}/searchAnalytics/query",
+                f"{GSC_API}/sites/{quote(site_url, safe='')}/searchAnalytics/query",
                 headers={"Authorization": f"Bearer {token}"},
                 json={
                     "startDate": date_str,
@@ -110,7 +111,7 @@ async def pull_daily(domain: str, query_date: date = None) -> dict | None:
 
             # Top pages
             resp_p = await client.post(
-                f"{GSC_API}/sites/{site_url}/searchAnalytics/query",
+                f"{GSC_API}/sites/{quote(site_url, safe='')}/searchAnalytics/query",
                 headers={"Authorization": f"Bearer {token}"},
                 json={
                     "startDate": date_str,
