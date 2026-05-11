@@ -1,3 +1,4 @@
+import os
 """Google Search Console data connector.
 
 Pulls daily metrics using the webmasters.readonly scope.
@@ -15,7 +16,8 @@ log = logging.getLogger(__name__)
 GSC_API = "https://searchconsole.googleapis.com/webmasters/v3"
 
 # Use benny's OAuth tokens (same Google account owns both properties)
-OAUTH_ACCOUNT = "benny"
+OAUTH_ACCOUNT = os.environ.get("TRAFFIC_OAUTH_ACCOUNT", "benny")
+
 
 
 async def _get_token() -> str | None:

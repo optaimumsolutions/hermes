@@ -1,3 +1,4 @@
+import os
 """Google Analytics 4 data connector.
 
 Pulls daily metrics using the analytics.readonly scope via GA4 Data API.
@@ -13,7 +14,8 @@ from .trends import store_snapshot, DOMAINS
 log = logging.getLogger(__name__)
 
 GA4_API = "https://analyticsdata.googleapis.com/v1beta"
-OAUTH_ACCOUNT = "benny"
+OAUTH_ACCOUNT = os.environ.get("TRAFFIC_OAUTH_ACCOUNT", "benny")
+
 
 # Map domains to GA4 property IDs (set via env vars)
 def _get_property_ids() -> dict:
